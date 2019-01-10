@@ -1,0 +1,118 @@
+/*Notes:
+This tool is made for myself. It's free to use for everyone, but there is no warranty for anything. Please leave the comment in the stored procedure.
+Not the best solution, but it still does what I needed. 
+Possibly I will work on it a bit to make it more elegant. Or at least a bit elegant. :)
+It only works for stored tables. Not for subselects, tempolary tables, etc.
+It will create a stored procedure at tools database, that will eat a table name with schema, and DB name as well, and list the columns, and the count of distinct values in each column.
+It only works for standard, stored tables. Not for subselects, or anything like this.
+
+
+Péter Tolvaj
+tolvajp@gmail.com
+https://github.com/tolvajp
+*/
+
+USE [Tools]
+GO
+
+/****** Object:  StoredProcedure [dbo].[sp_distinct_values]    Script Date: 10/01/2019 17:00:41 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[sp_distinct_values](@string NVARCHAR(100))
+
+AS
+BEGIN
+
+/*Notes:
+This tool is made for myself. It's free to use for everyone, but there is no warranty for anything. Please leave the comment in the stored procedure.
+Not the best solution, but it still does what I needed. 
+Possibly I will work on it a bit to make it more elegant. Or at least a bit elegant. :)
+It only works for stored tables. Not for subselects, tempolary tables, etc.
+It will create a stored procedure at tools database, that will eat a table name with schema, and DB name as well, and list the columns, and the count of distinct values in each column.
+It only works for standard, stored tables. Not for subselects, or anything like this.
+
+
+Péter Tolvaj
+tolvajp@gmail.com
+https://github.com/tolvajp
+*/
+
+
+
+declare @string_backup nvarchar(max)
+set @string_backup=@string
+DECLARE @return TABLE (column_name nvarchar(100), distinct_value__count int)
+DECLARE @db NVARCHAR(100)
+DECLARE @schema NVARCHAR(100)
+DECLARE @table NVARCHAR(100)
+
+SET @string=REPLACE((REPLACE(@string ,'[','')),']','')
+
+DECLARE @delimiter NVARCHAR (5)
+SET @delimiter='.'
+DECLARE @splitted TABLE (Id INT IDENTITY(1 , 1) 
+						  , Value NVARCHAR (100))
+WHILE(CHARINDEX (@delimiter , @string) > 0) 
+        BEGIN
+            INSERT INTO @splitted (
+                        value) 
+            SELECT
+                   Value = LTRIM (RTRIM (SUBSTRING (@string , 1 , CHARINDEX
+(@delimiter , @string) - 1))) 
+            SET @string = SUBSTRING (@string , CHARINDEX (@delimiter , @string) +
+LEN (@delimiter) , LEN (@string)) 
+        END
+
+    INSERT INTO @splitted (
+                Value) 
+    SELECT
+           Value = LTRIM (RTRIM (@string)) 
+
+		   set @db= (select Value from @splitted where Id=1)
+		   set @schema= (select Value from @splitted where Id=2)
+		   set @table= (select Value from @splitted where Id=3)
+
+
+
+--- The database name is splitted to database, schema, and table.
+
+
+	DECLARE @SQLSTR1 nvarchar(max)
+	DECLARE @SQLSTR2 nvarchar(max)
+	DECLARE @column_name NVARCHAR(100)
+	DECLARE @DISTINCT_ROW_COUNT int
+	CREATE TABLE #sp_distinct_values_column_list(ORDINAL_POSITION nvarchar(100),column_name nvarchar(100))
+	set @SQLSTR1='insert into #sp_distinct_values_column_list (ORDINAL_POSITION,column_name)  SELECT ORDINAL_POSITION,column_name FROM '+@DB+'.information_schema.columns WHERE table_name = '''+@table+''''
+	EXEC(@sqlstr1)
+
+	
+	DECLARE MY_CURSOR CURSOR 
+	LOCAL STATIC READ_ONLY FORWARD_ONLY
+	FOR 
+	select column_name from #sp_distinct_values_column_list order by ORDINAL_POSITION
+
+
+	OPEN MY_CURSOR
+	FETCH NEXT FROM MY_CURSOR INTO @column_name
+	WHILE @@FETCH_STATUS = 0
+	BEGIN 
+	SET @SQLSTR2='select @DISTINCT_ROW_COUNT=count(distinct('+@column_name+')) from '+@string_backup
+		EXECUTE sp_executesql @SQLSTR2, N' @DISTINCT_ROW_COUNT int OUTPUT', @DISTINCT_ROW_COUNT=@DISTINCT_ROW_COUNT OUTPUT
+		
+		insert into @return(column_name, distinct_value__count) values (@column_name, @DISTINCT_ROW_COUNT)
+		FETCH NEXT FROM MY_CURSOR INTO @column_name
+
+	END
+
+	CLOSE MY_CURSOR
+	DEALLOCATE MY_CURSOR
+	select * from @return order by column_name
+	drop table #sp_distinct_values_column_list
+
+
+	END
+GO
